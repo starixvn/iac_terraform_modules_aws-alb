@@ -20,6 +20,18 @@ variable "access_logs" {
   default     = {}
 }
 
+variable "connection_logs" {
+  description = "Map containing access logging configuration for load balancer"
+  type        = map(string)
+  default     = {}
+}
+
+variable "client_keep_alive" {
+  description = "Client keep alive value in seconds. The valid range is 60-604800 seconds. The default is 3600 seconds."
+  type        = number
+  default     = null
+}
+
 variable "customer_owned_ipv4_pool" {
   description = "The ID of the customer owned ipv4 pool to use for this load balancer"
   type        = string
@@ -28,6 +40,12 @@ variable "customer_owned_ipv4_pool" {
 
 variable "desync_mitigation_mode" {
   description = "Determines how the load balancer handles requests that might pose a security risk to an application due to HTTP desync. Valid values are `monitor`, `defensive` (default), `strictest`"
+  type        = string
+  default     = null
+}
+
+variable "dns_record_client_routing_policy" {
+  description = "Indicates how traffic is distributed among the load balancer Availability Zones. Possible values are any_availability_zone (default), availability_zone_affinity, or partial_availability_zone_affinity. Only valid for network type load balancers."
   type        = string
   default     = null
 }
@@ -74,6 +92,12 @@ variable "enable_xff_client_port" {
   default     = null
 }
 
+variable "enable_zonal_shift" {
+  description = "Whether zonal shift is enabled"
+  type        = bool
+  default     = null
+}
+
 variable "idle_timeout" {
   description = "The time in seconds that the connection is allowed to be idle. Only valid for Load Balancers of type `application`. Default: `60`"
   type        = number
@@ -96,6 +120,12 @@ variable "load_balancer_type" {
   description = "The type of load balancer to create. Possible values are `application`, `gateway`, or `network`. The default value is `application`"
   type        = string
   default     = "application"
+}
+
+variable "enforce_security_group_inbound_rules_on_private_link_traffic" {
+  description = "Indicates whether inbound security group rules are enforced for traffic originating from a PrivateLink. Only valid for Load Balancers of type network. The possible values are on and off."
+  type        = string
+  default     = null
 }
 
 variable "name" {
@@ -131,7 +161,7 @@ variable "subnet_mapping" {
 variable "subnets" {
   description = "A list of subnet IDs to attach to the LB. Subnets cannot be updated for Load Balancers of type `network`. Changing this value for load balancers of type `network` will force a recreation of the resource"
   type        = list(string)
-  default     = []
+  default     = null
 }
 
 variable "xff_header_processing_mode" {
@@ -174,6 +204,12 @@ variable "listeners" {
 
 variable "target_groups" {
   description = "Map of target group configurations to create"
+  type        = any
+  default     = {}
+}
+
+variable "additional_target_group_attachments" {
+  description = "Map of additional target group attachments to create. Use `target_group_key` to attach to the target group created in `target_groups`"
   type        = any
   default     = {}
 }

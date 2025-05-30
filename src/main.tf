@@ -22,23 +22,36 @@ resource "aws_lb" "this" {
     }
   }
 
-  customer_owned_ipv4_pool                    = var.customer_owned_ipv4_pool
-  desync_mitigation_mode                      = var.desync_mitigation_mode
-  drop_invalid_header_fields                  = var.drop_invalid_header_fields
-  enable_cross_zone_load_balancing            = var.enable_cross_zone_load_balancing
-  enable_deletion_protection                  = var.enable_deletion_protection
-  enable_http2                                = var.enable_http2
-  enable_tls_version_and_cipher_suite_headers = var.enable_tls_version_and_cipher_suite_headers
-  enable_waf_fail_open                        = var.enable_waf_fail_open
-  enable_xff_client_port                      = var.enable_xff_client_port
-  idle_timeout                                = var.idle_timeout
-  internal                                    = var.internal
-  ip_address_type                             = var.ip_address_type
-  load_balancer_type                          = var.load_balancer_type
-  name                                        = var.name
-  name_prefix                                 = var.name_prefix
-  preserve_host_header                        = var.preserve_host_header
-  security_groups                             = var.create_security_group ? concat([aws_security_group.this[0].id], var.security_groups) : var.security_groups
+  dynamic "connection_logs" {
+    for_each = length(var.connection_logs) > 0 ? [var.connection_logs] : []
+    content {
+      bucket  = connection_logs.value.bucket
+      enabled = try(connection_logs.value.enabled, true)
+      prefix  = try(connection_logs.value.prefix, null)
+    }
+  }
+
+  client_keep_alive                                            = var.client_keep_alive
+  customer_owned_ipv4_pool                                     = var.customer_owned_ipv4_pool
+  desync_mitigation_mode                                       = var.desync_mitigation_mode
+  dns_record_client_routing_policy                             = var.dns_record_client_routing_policy
+  drop_invalid_header_fields                                   = var.drop_invalid_header_fields
+  enable_cross_zone_load_balancing                             = var.enable_cross_zone_load_balancing
+  enable_deletion_protection                                   = var.enable_deletion_protection
+  enable_http2                                                 = var.enable_http2
+  enable_tls_version_and_cipher_suite_headers                  = var.enable_tls_version_and_cipher_suite_headers
+  enable_waf_fail_open                                         = var.enable_waf_fail_open
+  enable_xff_client_port                                       = var.enable_xff_client_port
+  enable_zonal_shift                                           = var.enable_zonal_shift
+  enforce_security_group_inbound_rules_on_private_link_traffic = var.enforce_security_group_inbound_rules_on_private_link_traffic
+  idle_timeout                                                 = var.idle_timeout
+  internal                                                     = var.internal
+  ip_address_type                                              = var.ip_address_type
+  load_balancer_type                                           = var.load_balancer_type
+  name                                                         = var.name
+  name_prefix                                                  = var.name_prefix
+  preserve_host_header                                         = var.preserve_host_header
+  security_groups                                              = var.create_security_group ? concat([aws_security_group.this[0].id], var.security_groups) : var.security_groups
 
   dynamic "subnet_mapping" {
     for_each = var.subnet_mapping
@@ -59,6 +72,12 @@ resource "aws_lb" "this" {
     create = try(var.timeouts.create, null)
     update = try(var.timeouts.update, null)
     delete = try(var.timeouts.delete, null)
+  }
+
+  lifecycle {
+    ignore_changes = [
+      tags["elasticbeanstalk:shared-elb-environment-count"]
+    ]
   }
 }
 
@@ -188,11 +207,43 @@ resource "aws_lb_listener" "this" {
     }
   }
 
-  load_balancer_arn = aws_lb.this[0].arn
-  port              = try(each.value.port, var.default_port)
-  protocol          = try(each.value.protocol, var.default_protocol)
-  ssl_policy        = contains(["HTTPS", "TLS"], try(each.value.protocol, var.default_protocol)) ? try(each.value.ssl_policy, "ELBSecurityPolicy-TLS13-1-2-Res-2021-06") : try(each.value.ssl_policy, null)
-  tags              = merge(local.tags, try(each.value.tags, {}))
+  dynamic "mutual_authentication" {
+    for_each = try([each.value.mutual_authentication], [])
+    content {
+      mode                             = mutual_authentication.value.mode
+      trust_store_arn                  = try(mutual_authentication.value.trust_store_arn, null)
+      ignore_client_certificate_expiry = try(mutual_authentication.value.ignore_client_certificate_expiry, null)
+      advertise_trust_store_ca_names   = try(mutual_authentication.value.advertise_trust_store_ca_names, null)
+    }
+  }
+
+  routing_http_response_server_enabled                                = try(each.value.routing_http_response_server_enabled, null)
+  routing_http_response_strict_transport_security_header_value        = try(each.value.routing_http_response_strict_transport_security_header_value, null)
+  routing_http_response_access_control_allow_origin_header_value      = try(each.value.routing_http_response_access_control_allow_origin_header_value, null)
+  routing_http_response_access_control_allow_methods_header_value     = try(each.value.routing_http_response_access_control_allow_methods_header_value, null)
+  routing_http_response_access_control_allow_headers_header_value     = try(each.value.routing_http_response_access_control_allow_headers_header_value, null)
+  routing_http_response_access_control_allow_credentials_header_value = try(each.value.routing_http_response_access_control_allow_credentials_header_value, null)
+  routing_http_response_access_control_expose_headers_header_value    = try(each.value.routing_http_response_access_control_expose_headers_header_value, null)
+  routing_http_response_access_control_max_age_header_value           = try(each.value.routing_http_response_access_control_max_age_header_value, null)
+  routing_http_response_content_security_policy_header_value          = try(each.value.routing_http_response_content_security_policy_header_value, null)
+  routing_http_response_x_content_type_options_header_value           = try(each.value.routing_http_response_x_content_type_options_header_value, null)
+  routing_http_response_x_frame_options_header_value                  = try(each.value.routing_http_response_x_frame_options_header_value, null)
+
+  routing_http_request_x_amzn_tls_version_header_name                   = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_tls_version_header_name, null) : null
+  routing_http_request_x_amzn_tls_cipher_suite_header_name              = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_tls_cipher_suite_header_name, null) : null
+  routing_http_request_x_amzn_mtls_clientcert_header_name               = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_mtls_clientcert_header_name, null) : null
+  routing_http_request_x_amzn_mtls_clientcert_serial_number_header_name = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_mtls_clientcert_serial_number_header_name, null) : null
+  routing_http_request_x_amzn_mtls_clientcert_issuer_header_name        = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_mtls_clientcert_issuer_header_name, null) : null
+  routing_http_request_x_amzn_mtls_clientcert_subject_header_name       = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_mtls_clientcert_subject_header_name, null) : null
+  routing_http_request_x_amzn_mtls_clientcert_validity_header_name      = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_mtls_clientcert_validity_header_name, null) : null
+  routing_http_request_x_amzn_mtls_clientcert_leaf_header_name          = try(each.value.protocol, var.default_protocol, null) == "HTTPS" ? try(each.value.routing_http_request_x_amzn_mtls_clientcert_leaf_header_name, null) : null
+
+  load_balancer_arn        = aws_lb.this[0].arn
+  port                     = try(each.value.port, var.default_port)
+  protocol                 = try(each.value.protocol, var.default_protocol)
+  ssl_policy               = contains(["HTTPS", "TLS"], try(each.value.protocol, var.default_protocol)) ? try(each.value.ssl_policy, "ELBSecurityPolicy-TLS13-1-2-Res-2021-06") : try(each.value.ssl_policy, null)
+  tcp_idle_timeout_seconds = try(each.value.tcp_idle_timeout_seconds, null)
+  tags                     = merge(local.tags, try(each.value.tags, {}))
 }
 
 ################################################################################
@@ -334,7 +385,7 @@ resource "aws_lb_listener_rule" "this" {
   }
 
   dynamic "condition" {
-    for_each = try(each.value.conditions, [])
+    for_each = [for condition in each.value.conditions : condition if contains(keys(condition), "host_header")]
 
     content {
       dynamic "host_header" {
@@ -344,7 +395,13 @@ resource "aws_lb_listener_rule" "this" {
           values = host_header.value.values
         }
       }
+    }
+  }
 
+  dynamic "condition" {
+    for_each = [for condition in each.value.conditions : condition if contains(keys(condition), "http_header")]
+
+    content {
       dynamic "http_header" {
         for_each = try([condition.value.http_header], [])
 
@@ -353,7 +410,13 @@ resource "aws_lb_listener_rule" "this" {
           values           = http_header.value.values
         }
       }
+    }
+  }
 
+  dynamic "condition" {
+    for_each = [for condition in each.value.conditions : condition if contains(keys(condition), "http_request_method")]
+
+    content {
       dynamic "http_request_method" {
         for_each = try([condition.value.http_request_method], [])
 
@@ -361,7 +424,13 @@ resource "aws_lb_listener_rule" "this" {
           values = http_request_method.value.values
         }
       }
+    }
+  }
 
+  dynamic "condition" {
+    for_each = [for condition in each.value.conditions : condition if contains(keys(condition), "path_pattern")]
+
+    content {
       dynamic "path_pattern" {
         for_each = try([condition.value.path_pattern], [])
 
@@ -369,16 +438,28 @@ resource "aws_lb_listener_rule" "this" {
           values = path_pattern.value.values
         }
       }
+    }
+  }
 
+  dynamic "condition" {
+    for_each = [for condition in each.value.conditions : condition if contains(keys(condition), "query_string")]
+
+    content {
       dynamic "query_string" {
-        for_each = try([condition.value.query_string], [])
+        for_each = try(flatten([condition.value.query_string]), [])
 
         content {
           key   = try(query_string.value.key, null)
           value = query_string.value.value
         }
       }
+    }
+  }
 
+  dynamic "condition" {
+    for_each = [for condition in each.value.conditions : condition if contains(keys(condition), "source_ip")]
+
+    content {
       dynamic "source_ip" {
         for_each = try([condition.value.source_ip], [])
 
@@ -452,6 +533,7 @@ resource "aws_lb_target_group" "this" {
   ip_address_type                    = try(each.value.ip_address_type, null)
   lambda_multi_value_headers_enabled = try(each.value.lambda_multi_value_headers_enabled, null)
   load_balancing_algorithm_type      = try(each.value.load_balancing_algorithm_type, null)
+  load_balancing_anomaly_mitigation  = try(each.value.load_balancing_anomaly_mitigation, null)
   load_balancing_cross_zone_enabled  = try(each.value.load_balancing_cross_zone_enabled, null)
   name                               = try(each.value.name, null)
   name_prefix                        = try(each.value.name_prefix, null)
@@ -482,6 +564,39 @@ resource "aws_lb_target_group" "this" {
     }
   }
 
+  dynamic "target_group_health" {
+    for_each = try([each.value.target_group_health], [])
+
+    content {
+
+      dynamic "dns_failover" {
+        for_each = try([target_group_health.value.dns_failover], [])
+
+        content {
+          minimum_healthy_targets_count      = try(dns_failover.value.minimum_healthy_targets_count, null)
+          minimum_healthy_targets_percentage = try(dns_failover.value.minimum_healthy_targets_percentage, null)
+        }
+      }
+
+      dynamic "unhealthy_state_routing" {
+        for_each = try([target_group_health.value.unhealthy_state_routing], [])
+
+        content {
+          minimum_healthy_targets_count      = try(unhealthy_state_routing.value.minimum_healthy_targets_count, null)
+          minimum_healthy_targets_percentage = try(unhealthy_state_routing.value.minimum_healthy_targets_percentage, null)
+        }
+      }
+    }
+  }
+
+  dynamic "target_health_state" {
+    for_each = try([each.value.target_health_state], [])
+    content {
+      enable_unhealthy_connection_termination = try(target_health_state.value.enable_unhealthy_connection_termination, true)
+      unhealthy_draining_interval             = try(target_health_state.value.unhealthy_draining_interval, null)
+    }
+  }
+
   target_type = try(each.value.target_type, null)
   vpc_id      = try(each.value.vpc_id, var.vpc_id)
 
@@ -500,6 +615,17 @@ resource "aws_lb_target_group_attachment" "this" {
   for_each = { for k, v in var.target_groups : k => v if local.create && lookup(v, "create_attachment", true) }
 
   target_group_arn  = aws_lb_target_group.this[each.key].arn
+  target_id         = each.value.target_id
+  port              = try(each.value.target_type, null) == "lambda" ? null : try(each.value.port, var.default_port)
+  availability_zone = try(each.value.availability_zone, null)
+
+  depends_on = [aws_lambda_permission.this]
+}
+
+resource "aws_lb_target_group_attachment" "additional" {
+  for_each = { for k, v in var.additional_target_group_attachments : k => v if local.create }
+
+  target_group_arn  = aws_lb_target_group.this[each.value.target_group_key].arn
   target_id         = each.value.target_id
   port              = try(each.value.target_type, null) == "lambda" ? null : try(each.value.port, var.default_port)
   availability_zone = try(each.value.availability_zone, null)
